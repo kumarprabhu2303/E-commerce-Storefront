@@ -1,0 +1,81 @@
+<%- include('partials/header') %>
+<script src="https://js.stripe.com/v3/"></script>
+<div class="max-w-4xl mx-auto px-6 py-12">
+  <h1 class="text-3xl font-extrabold mb-8 text-slate-800">Your Basket</h1>
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+    <div id="cart-items-container" class="md:col-span-2 space-y-4"></div>
+    <div class="bg-white p-6 rounded-xl border shadow-sm h-fit">
+      <h3 class="font-bold text-lg mb-4 text-slate-700">Summary</h3>
+      <div class="flex justify-between border-b pb-3 font-semibold text-lg text-slate-800 mb-6">
+        <span>Order Total</span>
+        <span id="cart-total-price">$0.00</span>
+      </div>
+      <% if (user) { %>
+        <button onclick="runCheckout()" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold shadow-md transition">Pay via Stripe</button>
+      <% } else { %>
+        <a href="/login" class="block w-full text-center bg-slate-800 hover:bg-slate-900 text-white py-3 rounded-xl font-bold shadow-md transition">Login to Complete Order</a>
+      <% } %>
+    </div>
+  </div>
+</div>
+<script>
+  function renderCart() {
+    const cart = JSON.parse(localStorage.getItem('cart') || '[]');
+    const container = document.getElementById('cart-items-container');
+    let total = 0;
+    
+    if (cart.length === 0) {
+      container.innerHTML = '<p class="text-gray-500 py-4">Your shopping cart is completely empty.</p>';
+      document.getElementById('cart-total-price').innerText = "$0.00";
+      return;
+    }
+    
+    container.innerHTML = cart.map(item => {
+      total += item.price * item.quantity;
+      return `<div class="bg-white border rounded-xl p-4 flex justify-between items-center shadow-sm">
+        <div>
+          <h4 class="font-bold text-slate-800">\${item.name}</h4>
+          <p class="text-sm font-semibold text-blue-600">\${item.price} USD</p>
+        </div>
+        <div class="flex items-center gap-3 bg-gray-100 p-1.5 rounded-lg">
+          <button onclick="alterQty('\${item.id}', -1)" class="font-bold px-2 text-slate-600">-</button>
+          <span class="font-bold text-sm">\${item.quantity}</span>
+          <button onclick="alterQty('\${item.id}', 1)" class="font-bold px-2 text-slate-600">+</button>
+        </div>
+      </div>`;
+    }).join('');
+    
+    document.getElementById('cart-total-price').innerText = "$" + total.toFixed(2);
+  }
+
+  function alterQty(id, delta) {
+    let cart = JSON.parse(localStorage.getItem('cart') || '[]');
+    let item = cart.find(i => i.id === id);
+    if (item) {
+      item.quantity += delta;
+      if (item.quantity <= 0) cart = cart.filter(i => i.id !== id);
+    }
+    localStorage.setItem('cart', JSON.stringify(cart));
+    renderCart();
+    updateNavCart();
+  }
+
+  async function runCheckout() {
+    const cart = localStorage.getItem('cart') || '[]';
+    const res = await fetch('/api/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cart })
+    });
+    
+    if (!res.ok) return alert(await res.text());
+    
+    const session = await res.json();
+    const stripe = Stripe("<%= process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || 'pk_test_placeholder' %>");
+    localStorage.removeItem('cart');
+    await stripe.redirectToCheckout({ sessionId: session.id });
+  }
+
+  window.addEventListener('DOMContentLoaded', renderCart);
+</script>
+<%- include('partials/footer') %>
